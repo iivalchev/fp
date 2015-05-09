@@ -20,21 +20,25 @@ object Chapter8 extends App {
   }
 
   case object Passed extends Result {
-    def isFalsified: Boolean = false
+    def isFalsified = false
   }
 
-  case class Failed(failure: FailedCase, success: SuccessCount) extends Result {
-    def isFalsified: Boolean = true
+  case object Proved extends Result {
+    def isFalsified = false
+  }
+
+  case class Falsified(failure: FailedCase, success: SuccessCount) extends Result {
+    def isFalsified = true
   }
 
   case class Prop(run: (MaxSize, TestCases, RNG) => Result) {
     def &&(p: Prop): Prop = Prop((m, n, rng) => run(m, n, rng) match {
-      case Passed => p.run(m, n, rng)
+      case Passed | Proved => p.run(m, n, rng)
       case f => f
     })
 
     def ||(p: Prop): Prop = Prop((m, n, rng) => run(m, n, rng) match {
-      case _: Failed => p.run(m, n, rng)
+      case _: Falsified => p.run(m, n, rng)
       case s => s
     })
   }
@@ -43,28 +47,31 @@ object Chapter8 extends App {
     def forAll[A](as: Gen[A])(f: A => Boolean): Prop = Prop(
       (m, n, rng) => {
         Stream.unfold(rng)(r => Some(as.sample.run(r))).zip(Stream.from(0)).take(n).map {
-          case (a, i) => if (f(a)) Passed else Failed(a.toString, i)
+          case (a, i) => if (f(a)) Passed else Falsified(a.toString, i)
         }.find(_.isFalsified).getOrElse(Passed)
       }
     )
 
     def forAll[A](as: SGen[A])(f: A => Boolean): Prop = Prop(
       (m, n, rng) => {
-        Stream.from(1).take(m).map(i => forAll(as.forSize(i))(f)).toList.reduce(_ && _).run(m, n / m, rng)
+        Stream.from(0).take(m).map(i => forAll(as.forSize(i))(f)).toList.reduce(_ && _).run(m, n / m, rng)
       }
     )
+
+    def check(p: => Boolean): Prop = Prop((_, _, _) => if (p) Proved else Falsified("()", 0))
 
     def run(p: Prop,
             maxSize: Int = 100,
             testCases: Int = 100,
             rng: RNG = RNG(System.currentTimeMillis)): Unit =
       p.run(maxSize, testCases, rng) match {
-        case Failed(msg, n) =>
+        case Falsified(msg, n) =>
           println(s"! Falsified after $n passed tests:\n $msg")
         case Passed =>
           println(s"+ OK, passed $testCases tests.")
+        case Proved =>
+          println(s"+ OK, property prooved.")
       }
-
   }
 
   case class Gen[+A](sample: State[RNG, A]) {
@@ -97,17 +104,22 @@ object Chapter8 extends App {
     }
 
     def listOf[A](g: Gen[A]): SGen[List[A]] = SGen(n => Gen(State.sequence(List.fill(n)(g.sample))))
+
+    def listOf1[A](g: Gen[A]): SGen[List[A]] = SGen(n => Gen.listOfN(n max 1, g))
   }
 
   case class SGen[+A](forSize: Int => Gen[A]) {
     def flatMap[B](f: A => Gen[B]): SGen[B] = SGen(forSize andThen (_ flatMap f))
   }
 
-  val smallInt = Gen.choose(1, 10)
-  val maxProp = Prop.forAll(Gen.listOf(smallInt)) { ns =>
+  Prop.run(Prop.forAll(Gen.listOf1(Gen.choose(-10, 10))) { ns =>
     val max = ns.max
     !ns.exists(_ > max)
-  }
+  })
 
-  Prop.run(maxProp)
+
+  Prop.run(Prop.forAll(Gen.listOf1(Gen.choose(-10, 10))) { l =>
+    val ls = l.sorted
+    ls.isEmpty || ls.tail.isEmpty || !ls.zip(ls.tail).exists { case (a, b) => a > b }
+  })
 }
