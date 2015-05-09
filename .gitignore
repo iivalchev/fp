@@ -1,0 +1,8 @@
+out
+target
+.project
+.cproject
+.classpath
+.idea
+*.iml
+*~
