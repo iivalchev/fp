@@ -1,6 +1,9 @@
 package fp
 
+import java.util.concurrent.{ExecutorService, Executors}
+
 import fp.Chapter6.{RNG, State}
+import fp.Chapter7.Par
 
 /**
  * Created by Ivan Valchev (ivan.valchev@estafet.com) on 4/8/15.
@@ -58,6 +61,12 @@ object Chapter8 extends App {
       }
     )
 
+    def S: Gen[ExecutorService] =
+      Gen.weighted(Gen.choose(1, 4).map(Executors.newFixedThreadPool) -> .75,
+        Gen.unit(Executors.newSingleThreadExecutor()) -> .25)
+
+    def forAllPar[A](g: Gen[A])(f: A => Par[Boolean]): Prop = forAll(S ** g) { case s ** a => f(a)(s).get }
+
     def check(p: => Boolean): Prop = Prop((_, _, _) => if (p) Proved else Falsified("()", 0))
 
     def run(p: Prop,
@@ -70,7 +79,7 @@ object Chapter8 extends App {
         case Passed =>
           println(s"+ OK, passed $testCases tests.")
         case Proved =>
-          println(s"+ OK, property prooved.")
+          println(s"+ OK, property proved.")
       }
   }
 
@@ -79,9 +88,19 @@ object Chapter8 extends App {
 
     def flatMap[B](f: A => Gen[B]): Gen[B] = Gen(sample.flatMap(f(_).sample))
 
+    def map[B](f: A => B): Gen[B] = Gen(sample.map(f))
+
+    def map2[B, C](g: Gen[B])(f: (A, B) => C): Gen[C] = Gen(sample.map2(g.sample)(f))
+
     def listOfN(size: Gen[Int]): Gen[List[A]] = size.flatMap(i => Gen(State.sequence(List.fill(i)(sample))))
 
     def unsized: SGen[A] = SGen(_ => self)
+
+    def **[B](g: Gen[B]): Gen[(A, B)] = map2(g)((_, _))
+  }
+
+  object ** {
+    def unapply[A, B](p: (A, B)) = Some(p)
   }
 
   object Gen {
