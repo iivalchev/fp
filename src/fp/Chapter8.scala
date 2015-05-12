@@ -69,6 +69,10 @@ object Chapter8 extends App {
 
     def check(p: => Boolean): Prop = Prop((_, _, _) => if (p) Proved else Falsified("()", 0))
 
+    def equal[A](pa: Par[A], pb: Par[A]): Par[Boolean] = Par.map2(pa, pb)(_ == _)
+
+    def checkPar(p: => Par[Boolean]) = forAllPar(Gen.unit(()))(_ => p)
+
     def run(p: Prop,
             maxSize: Int = 100,
             testCases: Int = 100,
@@ -131,14 +135,19 @@ object Chapter8 extends App {
     def flatMap[B](f: A => Gen[B]): SGen[B] = SGen(forSize andThen (_ flatMap f))
   }
 
+  import Prop._
+
   Prop.run(Prop.forAll(Gen.listOf1(Gen.choose(-10, 10))) { ns =>
     val max = ns.max
     !ns.exists(_ > max)
   })
 
-
   Prop.run(Prop.forAll(Gen.listOf1(Gen.choose(-10, 10))) { l =>
     val ls = l.sorted
     ls.isEmpty || ls.tail.isEmpty || !ls.zip(ls.tail).exists { case (a, b) => a > b }
   })
+
+  run(checkPar(equal(Par.map(Par.unit(1))(_ + 1), Par.unit(2))))
+
+  run(checkPar(equal(Par.fork(Par.map(Par.unit(1))(_ + 1)), Par.unit(2))))
 }
