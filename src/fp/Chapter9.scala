@@ -30,9 +30,9 @@ object Chapter9 {
 
     implicit def asStringParser[A](a: A)(implicit f: A => Parser[String]): ParserOps[String] = ParserOps(f(a))
 
-    def many[A](a: A): Parser[Int]
+    def many[A](a: A): Parser[List[A]]
 
-    def many1[A](a: A)(notFound: ParseError) = map(many(a))(i => if (i == 0) Left(notFound) else Some(i))
+    def many1[A](a: A)(notFound: ParseError) = map(many(a))(i => if (i.isEmpty) Left(notFound) else Right(i))
 
     def then[A, B](a: A, b: B): Parser[(Int, Int)]
 
@@ -40,29 +40,23 @@ object Chapter9 {
       def |[B >: A](p2: Parser[B]) = self.or(p, p2)
 
       def or[B >: A](p2: Parser[B]) = self.or(p, p2)
+
+      def map[B](f: A => B) = self.map(p)(f)
+
+      def many(a: A): Parser[List[A]] = self.many(a)
+    }
+
+    object Laws {
+      def char(g: Gen[Char]) = Prop.forAll(g)(c => run(self.char(c))(c.toString) == Right(c))
+
+      def string(g: Gen[String]) = Prop.forAll(g)(s => run(s)(s) == Right(s))
+
+      def or = Prop.check(run("abra" | "cadabra")("abra") == Right("abra")) &&
+        Prop.check(run("abra" | "cadabra")("cadabra") == Right("cadabra"))
+
+      def listOfN = Prop.check(run(self.listOfN(3, "ab" | "cad"))("ababcad") == Right("ababcad")) &&
+        Prop.check(run(self.listOfN(3, "ab" | "cad"))("abcadcad") == Right("abcadcad")) &&
+        Prop.check(run(self.listOfN(3, "ab" | "cad"))("ababab") == Right("ababab"))
     }
   }
-
-  trait Laws[ParseError, Parser[+ _]] extends App {
-
-    val p: Parsers[ParseError, Parser]
-
-    import p._
-
-    Prop.forAll(Gen.choose(1, 26).map(_.toChar))(c => p.run(p.char(c))(c.toString) == Right(c))
-
-    Prop.forAll(Gen.listOf(Gen.choose(1, 26)).map(xs => xs.map(_.toString).sum))(s => p.run(s)(s) == Right(s))
-
-    Prop.check(p.run("abra" | "cadabra")("abra") == Right("abra"))
-
-    Prop.check(p.run("abra" | "cadabra")("cadabra") == Right("cadabra"))
-
-    Prop.check(p.run(p.listOfN(3, "ab" | "cad"))("ababcad") == Right("ababcad"))
-
-    Prop.check(p.run(p.listOfN(3, "ab" | "cad"))("abcadcad") == Right("abcadcad"))
-
-    Prop.check(p.run(p.listOfN(3, "ab" | "cad"))("ababab") == Right("ababab"))
-
-  }
-
 }
