@@ -133,6 +133,8 @@ object Chapter8 extends App {
 
   case class SGen[+A](forSize: Int => Gen[A]) {
     def flatMap[B](f: A => Gen[B]): SGen[B] = SGen(forSize andThen (_ flatMap f))
+
+    def map[B](f: A => B): SGen[B] = flatMap(a => Gen.unit(f(a)))
   }
 
   import Prop._
