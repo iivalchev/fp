@@ -47,6 +47,10 @@ object Chapter9 {
 
     def product[A, B](p1: Parser[A], p2: => Parser[B]): Parser[(A, B)] = map2(p1, p2)((_, _))
 
+    def op1[A, B](p: Parser[(A, B)]): Parser[A] = p.map(_._1)
+
+    def op2[A, B](p: Parser[(A, B)]): Parser[B] = p.map(_._2)
+
     case class ParserOps[A](p: Parser[A]) {
       def |[B >: A](p2: Parser[B]) = self.or(p, p2)
 
@@ -98,6 +102,38 @@ object Chapter9 {
         }
     }
 
+  }
+
+  trait JSON
+
+  case object JNull extends JSON
+
+  case class JNumber(get: Double) extends JSON
+
+  case class JString(get: String) extends JSON
+
+  case class JBool(get: Boolean) extends JSON
+
+  case class JArray(get: IndexedSeq[JSON]) extends JSON
+
+  case class JObject(get: Map[String, JSON]) extends JSON
+
+  def jsonParser[ParseError, Parser[+ _]](P: Parsers[ParseError, Parser]): Parser[JSON] = {
+    import P._
+
+    def NAME: Parser[String] = regex( """"(.*)"""".r)
+    def NULL: Parser[JNull.type] = regex( """(?i)(null)""".r).map(_ => JNull)
+    def NUMBER: Parser[JNumber] = regex( """(\d*(\.\d+))""".r).map(s => JNumber(s.toDouble))
+    def BOOLEAN: Parser[JBool] = regex( """(?i)(true|false)""".r).map(s => JBool(s.toBoolean))
+    def STRING: Parser[JString] = NAME.map(s => JString(s))
+
+    def VALUE: Parser[JSON] = NULL | NUMBER | BOOLEAN | STRING | ARRAY | OBJECT
+    def PROP: Parser[(String, JSON)] = op1(NAME ** ":") ** VALUE
+
+    def OBJECT: Parser[JObject] = (op2("{" ** PROP) ** op1(op2("," ** PROP).many ** "}")).map(t => t._1 :: t._2).map(l => JObject(l.foldLeft[Map[String, JSON]](Map())(_ + _)))
+    def ARRAY: Parser[JArray] = (op2("[" ** VALUE.many) ** op1(op2("," ** VALUE).many ** "]")).map(t => JArray((t._1 ++ t._2).toArray))
+
+    ARRAY | OBJECT
   }
 
 }
