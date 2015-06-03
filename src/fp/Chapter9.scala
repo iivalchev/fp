@@ -3,6 +3,8 @@ package fp
 
 import fp.Chapter8._
 
+import scala.util.matching.Regex
+
 
 /**
  * Created by ivan on 5/27/15.
@@ -17,31 +19,33 @@ object Chapter9 {
 
     def succeeded[A](a: A): Parser[A] = string("").map(_ => a)
 
-    def failed[A]: Parser[A]
-
     def char(c: Char): Parser[Char] = string(c.toString).map(_.charAt(0))
 
-    def map[A, B](p: Parser[A])(f: A => B): Parser[B]
+    def flatMap[A, B](p: Parser[A])(f: A => Parser[B]): Parser[B]
 
-    def map2[A, B, C](p1: Parser[A], p2: Parser[B])(f: (A, B) => C): Parser[C] = product(p1, p2).map { case (a, b) => f(a, b) }
+    def map[A, B](p: Parser[A])(f: A => B): Parser[B] = flatMap(p)(a => succeeded(f(a)))
 
-    def or[A](p1: Parser[A], p2: Parser[A]): Parser[A]
+    def map2[A, B, C](p1: Parser[A], p2: => Parser[B])(f: (A, B) => C): Parser[C] = flatMap(p1)(a => map(p2)(b => f(a, b)))
 
-    def listOfN[A](n: Int, p: Parser[A]): Parser[A]
+    def or[A](p1: Parser[A], p2: => Parser[A]): Parser[A]
+
+    def listOfN[A](n: Int, p: Parser[A]): Parser[List[A]] = if (n == 0) succeeded(List()) else map2(p, listOfN(n - 1, p))(_ :: _)
 
     implicit def string(s: String): Parser[String]
+
+    implicit def regex(r: Regex): Parser[String]
 
     implicit def parserOps[A](p: Parser[A]): ParserOps[A] = ParserOps(p)
 
     implicit def asStringParser[A](a: A)(implicit f: A => Parser[String]): ParserOps[String] = ParserOps(f(a))
 
-    def many[A](a: Parser[A]): Parser[List[A]]
+    def many[A](p: Parser[A]): Parser[List[A]] = map2(p, many(p))(_ :: _) | succeeded(List())
 
     def many1[A](p: Parser[A])(notFound: ParseError) = map2(p, p.many)
 
     def slice[A](p: Parser[A]): Parser[String]
 
-    def product[A, B](p1: Parser[A], p2: Parser[B]): Parser[(A, B)]
+    def product[A, B](p1: Parser[A], p2: => Parser[B]): Parser[(A, B)] = map2(p1, p2)((_, _))
 
     case class ParserOps[A](p: Parser[A]) {
       def |[B >: A](p2: Parser[B]) = self.or(p, p2)
@@ -49,6 +53,8 @@ object Chapter9 {
       def or[B >: A](p2: Parser[B]) = self.or(p, p2)
 
       def map[B](f: A => B) = self.map(p)(f)
+
+      def flatMap[B](f: A => Parser[B]) = self.flatMap(p)(f)
 
       def many: Parser[List[A]] = self.many(p)
 
@@ -79,13 +85,13 @@ object Chapter9 {
 
       def productLaw = Prop.check(run(string("a") product string("b"))("ab") == Right(("a", "b"))) &&
         Prop.check {
-          run(failed product succeeded(""))("") match {
+          run("a" product succeeded(""))("") match {
             case _: Left => true
             case _ => false
           }
         } &&
         Prop.check {
-          run(succeeded("") product failed)("b") match {
+          run(succeeded("") product "a")("") match {
             case _: Left => true
             case _ => false
           }
