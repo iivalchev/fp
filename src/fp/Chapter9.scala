@@ -15,24 +15,60 @@ object Chapter9 {
   object ReferenceTypes {
     type Parser[+A] = Location => Result[A]
 
-    trait Result[+A]
+    sealed trait Result[+A] {
+      def mapError(f: ParseError => ParseError): Result[A] = this match {
+        case Failure(e) => Failure(f(e))
+        case _ => this
+      }
+
+      def uncommit = this match {
+        case Failure(e, true) => Failure(e, isCommitted = false)
+        case _ => this
+      }
+
+      def addCommitted(isCommitted: Boolean) = this match {
+        case Failure(e, c) => Failure(e, c || isCommitted)
+        case _ => this
+      }
+
+      def advanceSuccess(n: Int) = this match {
+        case Success(a, m) => Success(a, m + n)
+        case _ => this
+      }
+    }
 
     case class Success[+A](get: A, charsConsumed: Int) extends Result[A]
 
-    case class Failure[+A](get: ParseError) extends Result[A]
+    case class Failure[+A](get: ParseError, isCommitted: Boolean = true) extends Result[Nothing]
 
 
     object Reference extends Parsers[Parser] {
-      override def run[A](p: Parser[A])(input: String): Either[ParseError, A] = p(Location(input, 0)) match {
+      def run[A](p: Parser[A])(input: String): Either[ParseError, A] = p(Location(input, 0)) match {
         case Success(a, _) => Right(a)
         case Failure(e) => Left(e)
       }
 
-      override def flatMap[A, B](p: Parser[A])(f: (A) => Parser[B]): Parser[B] = ???
+      def flatMap[A, B](p: Parser[A])(f: (A) => Parser[B]): Parser[B] = {
+        loc => {
+          p(loc) match {
+            case Success(a, n) => f(a)(loc.advanceBy(n)).addCommitted(n != 0).advanceSuccess(n)
+            case e@Failure(_, _) => e
+          }
+        }
+      }
 
-      override def or[A](p1: Parser[A], p2: => Parser[A]): Parser[A] = ???
+      def or[A](p1: Parser[A], p2: => Parser[A]): Parser[A] = {
+        loc => p1(loc) match {
+          case Failure(_, false) => p2(loc)
+          case r => r
+        }
+      }
 
-      override implicit def string(s: String): Parser[String] = {
+      def attempt[A](p: Parser[A]): Parser[A] = {
+        loc => p(loc).uncommit
+      }
+
+      implicit def string(s: String): Parser[String] = {
         in => {
           if (in.input.startsWith(s, in.offset)) {
             Success(s, s.length)
@@ -42,9 +78,11 @@ object Chapter9 {
         }
       }
 
-      override def scope[A](msg: String)(p: Parser[A]): Parser[A] = ???
+      def scope[A](msg: String)(p: Parser[A]): Parser[A] = {
+        loc => p(loc).mapError(_.push(loc, msg))
+      }
 
-      override implicit def regex(r: Regex): Parser[String] = {
+      implicit def regex(r: Regex): Parser[String] = {
         loc =>
           r.findPrefixOf(loc.input.substring(loc.offset)) match {
             case Some(m) => Success(m, m.length)
@@ -52,7 +90,7 @@ object Chapter9 {
           }
       }
 
-      override def slice[A](p: Parser[A]): Parser[String] = {
+      def slice[A](p: Parser[A]): Parser[String] = {
         loc => {
           p(loc) match {
             case Success(_, charsConsumed) => Success(loc.input.substring(loc.offset, loc.offset + charsConsumed), charsConsumed)
@@ -61,11 +99,13 @@ object Chapter9 {
         }
       }
 
-      override def fail: Parser[Nothing] = ???
+      def label[A](msg: String)(p: Parser[A]): Parser[A] = {
+        loc => p(loc).mapError(_.label(msg))
+      }
 
-      override def label[A](msg: String)(p: Parser[A]): Parser[A] = ???
-
-      override def attempt[A](p: Parser[A]): Parser[A] = ???
+      def fail[A](msg: String): Parser[A] = {
+        loc => Failure(loc.toError(msg))
+      }
     }
 
   }
@@ -93,7 +133,7 @@ object Chapter9 {
     def scope[A](msg: String)(p: Parser[A]): Parser[A]
 
 
-    def fail: Parser[Nothing]
+    def fail[A](msg: String): Parser[A]
 
     def succeeded[A](a: A): Parser[A] = string("").map(_ => a)
 
@@ -175,8 +215,8 @@ object Chapter9 {
           }
         }
 
-      def attemptLaw = Prop.check(run(attempt(string("a").flatMap(_ => fail)) | string("b"))("b") == Right("a")) &&
-        Prop.check(run(string("a").flatMap(_ => fail) | string("b"))("b") match {
+      def attemptLaw = Prop.check(run(attempt(string("a").flatMap(_ => fail("fail"))) | string("b"))("b") == Right("a")) &&
+        Prop.check(run(string("a").flatMap(_ => fail("fail")) | string("b"))("b") match {
           case _: Left => true
           case _ => false
         })
@@ -184,7 +224,15 @@ object Chapter9 {
 
   }
 
-  case class ParseError(stack: List[(Location, String)])
+  case class ParseError(stack: List[(Location, String)]) {
+    def push(loc: Location, msg: String) = copy((loc, msg) :: stack)
+
+    def label(msg: String): ParseError = ParseError(latestLoc.map((_, msg)).toList)
+
+    def latestLoc: Option[Location] = latest.map(_._1)
+
+    def latest: Option[(Location, String)] = stack.headOption
+  }
 
   case class Location(input: String, offset: Int = 0) {
     lazy val line = input.slice(0, offset + 1).count(_ == "/n") + 1
@@ -192,6 +240,8 @@ object Chapter9 {
       case -1 => offset + 1
       case lineStart => offset - lineStart
     }
+
+    def advanceBy(n: Int) = copy(offset = offset + n)
 
     def toError(msg: String) = ParseError(List((this, msg)))
   }
