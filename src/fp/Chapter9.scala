@@ -17,7 +17,7 @@ object Chapter9 {
 
     sealed trait Result[+A] {
       def mapError(f: ParseError => ParseError): Result[A] = this match {
-        case Failure(e) => Failure(f(e))
+        case Failure(e, c) => Failure(f(e), c)
         case _ => this
       }
 
@@ -45,7 +45,7 @@ object Chapter9 {
     object Reference extends Parsers[Parser] {
       def run[A](p: Parser[A])(input: String): Either[ParseError, A] = p(Location(input, 0)) match {
         case Success(a, _) => Right(a)
-        case Failure(e) => Left(e)
+        case Failure(e, _) => Left(e)
       }
 
       def flatMap[A, B](p: Parser[A])(f: (A) => Parser[B]): Parser[B] = {
@@ -94,7 +94,7 @@ object Chapter9 {
         loc => {
           p(loc) match {
             case Success(_, charsConsumed) => Success(loc.input.substring(loc.offset, loc.offset + charsConsumed), charsConsumed)
-            case Failure(e) => Failure(e)
+            case r@Failure(_, _) => r
           }
         }
       }
@@ -151,7 +151,7 @@ object Chapter9 {
 
     def many[A](p: Parser[A]): Parser[List[A]] = map2(p, many(p))(_ :: _) | succeeded(List())
 
-    def many1[A](p: Parser[A])(notFound: ParseError) = map2(p, p.many)
+    def many1[A](p: Parser[A])(notFound: ParseError) = map2(p, p.many)(_ :: _)
 
     def product[A, B](p1: Parser[A], p2: => Parser[B]): Parser[(A, B)] = map2(p1, p2)((_, _))
 
@@ -183,44 +183,44 @@ object Chapter9 {
       def product[B](p2: Parser[B]) = self.product(p, p2)
     }
 
-    object Laws {
-      def equal[A](p1: Parser[A], p2: Parser[A])(s: String) = run(p1)(s) == run(p2)(s)
-
-      def succeededLaw[A](a: A, g: Gen[String]) = Prop.forAll(g)(in => run(succeeded(a))(in) == a)
-
-      def charLaw(g: Gen[Char]) = Prop.forAll(g)(c => run(char(c))(c.toString) == Right(c))
-
-      def stringLaw(g: Gen[String]) = Prop.forAll(g)(s => run(s)(s) == Right(s))
-
-      def orLaw = Prop.check(run("abra" | "cadabra")("abra") == Right("abra")) &&
-        Prop.check(run("abra" | "cadabra")("cadabra") == Right("cadabra"))
-
-      def listOfNLaw = Prop.check(run(self.listOfN(3, "ab" | "cad"))("ababcad") == Right("ababcad")) &&
-        Prop.check(run(self.listOfN(3, "ab" | "cad"))("abcadcad") == Right("abcadcad")) &&
-        Prop.check(run(self.listOfN(3, "ab" | "cad"))("ababab") == Right("ababab"))
-
-      def mapLaw[A](p: Parser[A])(g: Gen[String]) = Prop.forAll(g)(in => equal(p, p.map(a => a))(in))
-
-      def productLaw = Prop.check(run(string("a") product string("b"))("ab") == Right(("a", "b"))) &&
-        Prop.check {
-          run("a" product succeeded(""))("") match {
-            case _: Left => true
-            case _ => false
-          }
-        } &&
-        Prop.check {
-          run(succeeded("") product "a")("") match {
-            case _: Left => true
-            case _ => false
-          }
-        }
-
-      def attemptLaw = Prop.check(run(attempt(string("a").flatMap(_ => fail("fail"))) | string("b"))("b") == Right("a")) &&
-        Prop.check(run(string("a").flatMap(_ => fail("fail")) | string("b"))("b") match {
-          case _: Left => true
-          case _ => false
-        })
-    }
+//    object Laws {
+//      def equal[A](p1: Parser[A], p2: Parser[A])(s: String) = run(p1)(s) == run(p2)(s)
+//
+//      def succeededLaw[A](a: A, g: Gen[String]) = Prop.forAll(g)(in => run(succeeded(a))(in) == a)
+//
+//      def charLaw(g: Gen[Char]) = Prop.forAll(g)(c => run(char(c))(c.toString) == Right(c))
+//
+//      def stringLaw(g: Gen[String]) = Prop.forAll(g)(s => run(s)(s) == Right(s))
+//
+//      def orLaw = Prop.check(run("abra" | "cadabra")("abra") == Right("abra")) &&
+//        Prop.check(run("abra" | "cadabra")("cadabra") == Right("cadabra"))
+//
+//      def listOfNLaw = Prop.check(run(self.listOfN(3, "ab" | "cad"))("ababcad") == Right("ababcad")) &&
+//        Prop.check(run(self.listOfN(3, "ab" | "cad"))("abcadcad") == Right("abcadcad")) &&
+//        Prop.check(run(self.listOfN(3, "ab" | "cad"))("ababab") == Right("ababab"))
+//
+//      def mapLaw[A](p: Parser[A])(g: Gen[String]) = Prop.forAll(g)(in => equal(p, p.map(a => a))(in))
+//
+//      def productLaw = Prop.check(run(string("a") product string("b"))("ab") == Right(("a", "b"))) &&
+//        Prop.check {
+//          run("a" product succeeded(""))("") match {
+//            case _: Left => true
+//            case _ => false
+//          }
+//        } &&
+//        Prop.check {
+//          run(succeeded("") product "a")("") match {
+//            case _: Left => true
+//            case _ => false
+//          }
+//        }
+//
+//      def attemptLaw = Prop.check(run(attempt(string("a").flatMap(_ => fail("fail"))) | string("b"))("b") == Right("a")) &&
+//        Prop.check(run(string("a").flatMap(_ => fail("fail")) | string("b"))("b") match {
+//          case _: Left => true
+//          case _ => false
+//        })
+//    }
 
   }
 
@@ -260,22 +260,22 @@ object Chapter9 {
 
   case class JObject(get: Map[String, JSON]) extends JSON
 
-  def jsonParser[ParseError, Parser[+ _]](P: Parsers[Parser]): Parser[JSON] = {
-    import P._
-
-    def NAME: Parser[String] = regex( """"(.*)"""".r)
-    def NULL: Parser[JNull.type] = regex( """(?i)(null)""".r).map(_ => JNull)
-    def NUMBER: Parser[JNumber] = regex( """(\d*(\.\d+))""".r).map(s => JNumber(s.toDouble))
-    def BOOLEAN: Parser[JBool] = regex( """(?i)(true|false)""".r).map(s => JBool(s.toBoolean))
-    def STRING: Parser[JString] = NAME.map(s => JString(s))
-
-    def VALUE: Parser[JSON] = NULL | NUMBER | BOOLEAN | STRING | ARRAY | OBJECT
-    def PROP: Parser[(String, JSON)] = op1(NAME ** ":") ** VALUE
-
-    def OBJECT: Parser[JObject] = (op2("{" ** PROP) ** op1(op2("," ** PROP).many ** "}")).map(t => t._1 :: t._2).map(l => JObject(l.foldLeft[Map[String, JSON]](Map())(_ + _)))
-    def ARRAY: Parser[JArray] = (op2("[" ** VALUE.many) ** op1(op2("," ** VALUE).many ** "]")).map(t => JArray((t._1 ++ t._2).toArray))
-
-    ARRAY | OBJECT
-  }
+//  def jsonParser[ParseError, Parser[+ _]](P: Parsers[Parser]): Parser[JSON] = {
+//    import P._
+//
+//    def NAME: Parser[String] = regex( """"(.*)"""".r)
+//    def NULL: Parser[JNull.type] = regex( """(?i)(null)""".r).map(_ => JNull)
+//    def NUMBER: Parser[JNumber] = regex( """(\d*(\.\d+))""".r).map(s => JNumber(s.toDouble))
+//    def BOOLEAN: Parser[JBool] = regex( """(?i)(true|false)""".r).map(s => JBool(s.toBoolean))
+//    def STRING: Parser[JString] = NAME.map(s => JString(s))
+//
+//    def VALUE: Parser[JSON] = NULL | NUMBER | BOOLEAN | STRING | ARRAY | OBJECT
+//    def PROP: Parser[(String, JSON)] = op1(NAME ** ":") ** VALUE
+//
+//    def OBJECT: Parser[JObject] = (op2("{" ** PROP) ** op1(op2("," ** PROP).many ** "}")).map(t => t._1 :: t._2).map(l => JObject(l.foldLeft[Map[String, JSON]](Map())(_ + _)))
+//    def ARRAY: Parser[JArray] = (op2("[" ** VALUE.many) ** op1(op2("," ** VALUE).many ** "]")).map(t => JArray((t._1 ++ t._2).toArray))
+//
+//    ARRAY | OBJECT
+//  }
 
 }
