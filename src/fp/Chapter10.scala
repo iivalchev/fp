@@ -110,6 +110,47 @@ object Chapter10 extends App {
     }
   }
 
+  trait Foldable[F[_]] {
+    def foldRight[A, B](as: F[A], z: B)(f: (A, B) => B): B
+    def foldLeft[A, B](as: F[A], z: B)(f: (B, A) => B): B
+    def foldMap[A, B](as: F[A])(f: A => B)(m: Monoid[B]): B
+    def concatenate[A](as: F[A])(m: Monoid[A]) = foldLeft(as, m.zero)(m.op)
+  }
+
+  object ListFoldable extends Foldable[List] {
+    def foldRight[A, B](as: List[A], z: B)(f: (A, B) => B): B = as.foldRight(z)(f)
+    def foldLeft[A, B](as: List[A], z: B)(f: (B, A) => B): B = as.foldLeft(z)(f)
+    def foldMap[A, B](as: List[A])(f: A => B)(m: Monoid[B]): B = concatenate(as.map(f))(m)
+  }
+
+  sealed trait Tree[+A]
+
+  case class Leaf[A](value: A) extends Tree[A]
+
+  case class Branch[A](left: Tree[A], right: Tree[A]) extends Tree[A]
+
+  object TreeFoldable extends Foldable[Tree] {
+    def foldRight[A, B](as: Tree[A], z: B)(f: (A, B) => B): B = as match {
+      case Leaf(a) => f(a, z)
+      case Branch(l, r) => foldRight(l, foldRight(r, z)(f))(f)
+    }
+    def foldLeft[A, B](as: Tree[A], z: B)(f: (B, A) => B): B = as match {
+      case Leaf(a) => f(z, a)
+      case Branch(l, r) => foldLeft(r, foldLeft(l, z)(f))(f)
+    }
+    def foldMap[A, B](as: Tree[A])(f: (A) => B)(m: Monoid[B]): B = as match {
+      case Leaf(a) => f(a)
+      case Branch(l, r) => m.op(foldMap(l)(f)(m), foldMap(r)(f)(m))
+    }
+  }
+
+  object OptionFoldable extends Foldable[Option]{
+    def foldRight[A, B](as: Option[A], z: B)(f: (A, B) => B): B = as.map()
+    def foldLeft[A, B](as: Option[A], z: B)(f: (B, A) => B): B = ???
+    def foldMap[A, B](as: Option[A])(f: (A) => B)(m: Monoid[B]): B = ???
+  }
+
+
   val words = List("Hic", "Est", "Index")
   println(words.foldRight(stringMonoid.zero)(stringMonoid.op))
   println(words.foldLeft(stringMonoid.zero)(stringMonoid.op))
