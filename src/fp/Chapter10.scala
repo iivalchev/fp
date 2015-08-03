@@ -115,6 +115,7 @@ object Chapter10 extends App {
     def foldLeft[A, B](as: F[A], z: B)(f: (B, A) => B): B
     def foldMap[A, B](as: F[A])(f: A => B)(m: Monoid[B]): B
     def concatenate[A](as: F[A])(m: Monoid[A]) = foldLeft(as, m.zero)(m.op)
+    def toList[A](fa: F[A]): List[A] = foldRight(fa, List(): List[A])(_ :: _)
   }
 
   object ListFoldable extends Foldable[List] {
@@ -144,12 +145,29 @@ object Chapter10 extends App {
     }
   }
 
-  object OptionFoldable extends Foldable[Option]{
-    def foldRight[A, B](as: Option[A], z: B)(f: (A, B) => B): B = as.map()
-    def foldLeft[A, B](as: Option[A], z: B)(f: (B, A) => B): B = ???
-    def foldMap[A, B](as: Option[A])(f: (A) => B)(m: Monoid[B]): B = ???
+  object OptionFoldable extends Foldable[Option] {
+    def foldRight[A, B](as: Option[A], z: B)(f: (A, B) => B): B = as.map(a => f(a, z)).getOrElse(z)
+    def foldLeft[A, B](as: Option[A], z: B)(f: (B, A) => B): B = as.map(a => f(z, a)).getOrElse(z)
+    def foldMap[A, B](as: Option[A])(f: (A) => B)(m: Monoid[B]): B = as.map(f).getOrElse(m.zero)
   }
 
+  def productMonoid[A, B](A: Monoid[A], B: Monoid[B]): Monoid[(A, B)] = new Monoid[(A, B)] {
+    def op(a1: (A, B), a2: (A, B)): (A, B) = (A.op(a1._1, a2._1), B.op(a1._2, a2._2))
+    def zero: (A, B) = (A.zero, B.zero)
+  }
+
+  def functionMonoid[A, B](B: Monoid[B]): Monoid[A => B] = new Monoid[A => B] {
+    def op(f1: A => B, f2: A => B): A => B = a => B.op(f1(a), f2(a))
+    def zero: A => B = _ => B.zero
+  }
+
+  def mapMergeMonoid[K, V](V: Monoid[V]): Monoid[Map[K, V]] = new Monoid[Map[K, V]] {
+    def op(a1: Map[K, V], a2: Map[K, V]): Map[K, V] = (a1.keySet ++ a2.keySet).foldLeft(zero)(
+      (acc, k) => acc.updated(k, V.op(a1.getOrElse(k, V.zero), a2.getOrElse(k, V.zero))))
+    def zero: Map[K, V] = Map[K, V]()
+  }
+
+  def bag[A](as: IndexedSeq[A]): Map[A, Int] = foldMapV(as, mapMergeMonoid[A, Int](intAddition))(a => Map(a -> 1))
 
   val words = List("Hic", "Est", "Index")
   println(words.foldRight(stringMonoid.zero)(stringMonoid.op))
