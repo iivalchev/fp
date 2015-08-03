@@ -148,7 +148,7 @@ object Chapter10 extends App {
   object OptionFoldable extends Foldable[Option] {
     def foldRight[A, B](as: Option[A], z: B)(f: (A, B) => B): B = as.map(a => f(a, z)).getOrElse(z)
     def foldLeft[A, B](as: Option[A], z: B)(f: (B, A) => B): B = as.map(a => f(z, a)).getOrElse(z)
-    def foldMap[A, B](as: Option[A])(f: (A) => B)(m: Monoid[B]): B = as.map(f).getOrElse(m.zero)
+    def foldMap[A, B](as: Option[A])(f: A => B)(m: Monoid[B]): B = as.map(f).getOrElse(m.zero)
   }
 
   def productMonoid[A, B](A: Monoid[A], B: Monoid[B]): Monoid[(A, B)] = new Monoid[(A, B)] {
