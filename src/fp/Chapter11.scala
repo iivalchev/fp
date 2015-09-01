@@ -1,5 +1,6 @@
 package fp
 
+import fp.Chapter12.Applicative
 import fp.Chapter6.State
 import fp.Chapter7.Par
 import fp.Chapter8.Gen
@@ -10,7 +11,11 @@ import fp.Chapter9.Parsers
  */
 object Chapter11 extends App {
 
-  trait Monad[F[_]] {
+  trait Functor[F[_]] {
+    def map[A, B](fa: F[A])(f: A => B): F[B]
+  }
+
+  trait Monad[F[_]] extends Applicative[F] {
     def unit[A](a: => A): F[A]
     def flatMap[A, B](fa: F[A])(f: A => F[B]): F[B]
 
@@ -70,6 +75,14 @@ object Chapter11 extends App {
     def idMonad = new Monad[Id] {
       override def unit[A](a: => A): Id[A] = Id(a)
       override def flatMap[A, B](fa: Id[A])(f: (A) => Id[B]): Id[B] = fa.flatMap(f)
+    }
+
+    def eitherMonad[E] = new Monad[({type f[x] = Either[E, x]})#f] {
+      override def unit[A](a: => A): Either[E, A] = Right(a)
+      override def flatMap[A, B](fa: Either[E, A])(f: (A) => Either[E, B]): Either[E, B] = fa match {
+        case Right(a) => f(a)
+        case Left(e) => Left(e)
+      }
     }
   }
 
