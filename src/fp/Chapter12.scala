@@ -10,6 +10,8 @@ import fp.Chapter6.State.{get, set}
  */
 object Chapter12 {
 
+  type Const[M, A] = M
+
   trait Applicative[F[_]] extends Functor[F] {
     self =>
     def unit[A](a: => A): F[A]
@@ -129,8 +131,6 @@ object Chapter12 {
           case None => G.unit(None)
         }
     }
-
-    type Const[M, A] = M
 
     implicit def monoidApplicative[M](implicit M: Monoid[M]) = new Applicative[({type f[x] = Const[M, x]})#f] {
       override def unit[A](a: => A): M = M.zero

@@ -96,23 +96,23 @@ object Chapter10 extends App {
     def zero: WC = Stub("")
   }
 
-  def count(s: String): Int = {
-    def unstub(s: String) = s.length min 1
-    foldMapV(s.toIndexedSeq, wcMonoid)(c => {
-      if (c.isWhitespace) {
-        Part("", 0, "")
-      } else {
-        Stub(c.toString)
-      }
-    }) match {
-      case Stub(s) => unstub(s)
-      case Part(l, w, r) => unstub(l) + w + unstub(r)
-    }
-  }
+//  def count(s: String): Int = {
+//    def unstub(s: String) = s.length min 1
+//    foldMapV(s.toIndexedSeq, wcMonoid)(c => {
+//      if (c.isWhitespace) {
+//        Part("", 0, "")
+//      } else {
+//        Stub(c.toString)
+//      }
+//    }) match {
+//      case Stub(s) => unstub(s)
+//      case Part(l, w, r) => unstub(l) + w + unstub(r)
+//    }
+//  }
 
   trait Foldable[F[_]] {
-    def foldRight[A, B](as: F[A], z: B)(f: (A, B) => B): B = ???
-    def foldLeft[A, B](as: F[A], z: B)(f: (B, A) => B): B = ???
+    def foldRight[A, B](as: F[A], z: B)(f: (A, B) => B): B = sys.error("not implemented")
+    def foldLeft[A, B](as: F[A], z: B)(f: (B, A) => B): B = sys.error("not implemented")
     def foldMap[A, B](as: F[A])(f: A => B)(m: Monoid[B]): B
     def concatenate[A](as: F[A])(m: Monoid[A]) = foldLeft(as, m.zero)(m.op)
     def toList[A](fa: F[A]): List[A] = foldRight(fa, List(): List[A])(_ :: _)
@@ -161,16 +161,16 @@ object Chapter10 extends App {
     def zero: A => B = _ => B.zero
   }
 
-  def mapMergeMonoid[K, V](V: Monoid[V]): Monoid[Map[K, V]] = new Monoid[Map[K, V]] {
-    def op(a1: Map[K, V], a2: Map[K, V]): Map[K, V] = (a1.keySet ++ a2.keySet).foldLeft(zero)(
-      (acc, k) => acc.updated(k, V.op(a1.getOrElse(k, V.zero), a2.getOrElse(k, V.zero))))
-    def zero: Map[K, V] = Map[K, V]()
-  }
+//  def mapMergeMonoid[K, V](V: Monoid[V]): Monoid[Map[K, V]] = new Monoid[Map[K, V]] {
+//    def op(a1: Map[K, V], a2: Map[K, V]): Map[K, V] = (a1.keySet ++ a2.keySet).foldLeft(zero)(
+//      (acc, k) => acc.updated(k, V.op(a1.getOrElse(k, V.zero), a2.getOrElse(k, V.zero))))
+//    def zero: Map[K, V] = Map[K, V]()
+//  }
 
-  def bag[A](as: IndexedSeq[A]): Map[A, Int] = foldMapV(as, mapMergeMonoid[A, Int](intAddition))(a => Map(a -> 1))
+//  def bag[A](as: IndexedSeq[A]): Map[A, Int] = foldMapV(as, mapMergeMonoid[A, Int](intAddition))(a => Map(a -> 1))
 
-  val words = List("Hic", "Est", "Index")
-  println(words.foldRight(stringMonoid.zero)(stringMonoid.op))
-  println(words.foldLeft(stringMonoid.zero)(stringMonoid.op))
+//  val words = List("Hic", "Est", "Index")
+//  println(words.foldRight(stringMonoid.zero)(stringMonoid.op))
+//  println(words.foldLeft(stringMonoid.zero)(stringMonoid.op))
 
 }
