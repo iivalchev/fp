@@ -61,7 +61,12 @@ object Chapter13 extends App {
 
 
     def translate[F[_], G[_], A](f: Free[F, A])(fg: F ~> G): Free[G, A] = {
-
+      val t = new ~>[F, ({type f[x] = Free[G, x]})#f] {
+        def apply[A](f: F[A]): Free[G, A] = {
+          Suspend[G, A](fg[A](f))
+        }
+      }
+      run[F, ({type f[x] = Free[G, x]})#f, A](f)(t)(freeMonad[G])
     }
     //    def runConsole[A](a: Free[Console,A]): A
 
