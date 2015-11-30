@@ -7,8 +7,8 @@ import fp.Chapter8.Gen
 import fp.Chapter9.Parsers
 
 /**
- * Created by Ivan Valchev (ivan.valchev@estafet.com) on 8/3/15.
- */
+  * Created by Ivan Valchev (ivan.valchev@estafet.com) on 8/3/15.
+  */
 object Chapter11 extends App {
 
   trait Functor[F[_]] {
@@ -19,15 +19,18 @@ object Chapter11 extends App {
     def unit[A](a: => A): F[A]
     def flatMap[A, B](fa: F[A])(f: A => F[B]): F[B]
 
-    def map[A, B](fa: F[A])(f: A => B) = flatMap(fa)(a => unit(f(a)))
-    def map2[A, B, C](fa: F[A], fb: F[B])(f: (A, B) => C) = flatMap(fa)(a => map(fb)(b => f(a, b)))
-    def sequence[A](lma: List[F[A]]): F[List[A]] = lma.foldRight(unit(List[A]()))((fa, b) => flatMap(fa)(a => map(b)(a :: _)))
-    def traverse[A, B](la: List[A])(f: A => F[B]): F[List[B]] = sequence(la.map(f))
-    def replicateM[A](n: Int, ma: F[A]): F[List[A]] = sequence(List.fill(n)(ma))
+    override def map[A, B](fa: F[A])(f: A => B) = flatMap(fa)(a => unit(f(a)))
+    override def map2[A, B, C](fa: F[A], fb: F[B])(f: (A, B) => C) = flatMap(fa)(a => map(fb)(b => f(a, b)))
+    override def sequence[A](lma: List[F[A]]): F[List[A]] = lma.foldRight(unit(List[A]()))((fa, b) => flatMap(fa)(a => map(b)(a :: _)))
+    override def traverse[A, B](la: List[A])(f: A => F[B]): F[List[B]] = sequence(la.map(f))
+    override def replicateM[A](n: Int, ma: F[A]): F[List[A]] = sequence(List.fill(n)(ma))
     def filterM[A](ms: List[A])(f: A => F[Boolean]): F[List[A]] = ms.foldRight(unit(List[A]()))((a, l) => flatMap(f(a))(b => if (b) map(l)(a :: _) else l))
-    def product[A, B](fa: F[A], fb: F[B]): F[(A, B)] = flatMap(fa)(a => map(fb)(b => (a, b)))
+    override def product[A, B](fa: F[A], fb: F[B]): F[(A, B)] = flatMap(fa)(a => map(fb)(b => (a, b)))
     def compose[A, B, C](f: A => F[B], g: B => F[C]): A => F[C] = a => flatMap(f(a))(g)
     def join[A](mma: F[F[A]]): F[A] = flatMap(mma)(ma => ma)
+    def ifM[A](p: F[Boolean], ifTrue: => F[A], ifFalse: => F[A]): F[A] = flatMap(p)(if (_) ifTrue else ifFalse)
+    def whileM_[A](p: F[Boolean], body: => F[A]): F[Unit] = ifM(p, flatMap(body)(_ => whileM_(p, body)), unit(()))
+    def untilM_[A](body: => F[A], p: F[Boolean]): F[Unit] = flatMap(body)(_ => whileM_(p, body))
 
 
     def flatMap_compose[A, B](fa: F[A])(f: A => F[B]): F[B] = compose((_: Unit) => fa, f)(())
