@@ -79,7 +79,7 @@ object Chapter12 {
       }
       traverse[Id, A, B](fa)(f)
     }
-    def foldMap[A, B](as: F[A])(f: A => B)(m: Monoid[B]): B = traverse(as)(f)(monoidApplicative(m))
+    def foldMap[A, B](as: F[A])(f: A => B)(m: Monoid[B]): B = traverse[({type f[x] = Const[B, x]})#f, A, B](as)(f)(monoidApplicative(m))
     def traverseS[S, A, B](fa: F[A])(f: A => State[S, B]): State[S, F[B]] = traverse[({type f[x] = State[S, x]})#f, A, B](fa)(f)(Monad.stateMonad)
     def zipWithIndex[A](fa: F[A]): F[(A, Int)] = traverseS(fa)(
       a => for {
@@ -140,7 +140,7 @@ object Chapter12 {
     def compose[F[_], G[_]](F:Monad[F], G:Monad[G], T:Traverse[G]):Monad[({type f[x] = F[G[x]]})#f] = new Monad[({type f[x] = F[G[x]]})#f] {
       override def unit[A](a: => A): F[G[A]] = F.unit(G.unit(a))
       override def flatMap[A, B](fa: F[G[A]])(f: (A) => F[G[B]]): F[G[B]] = join(map(fa)(f))
-      override def join[A](fa:F[G[F[G[A]]]]):F[G[A]] = F.map(F.flatMap[G[F[G[A]]], G[G[A]]](fa)(gfg => T.sequence(gfg)))(G.join(_))
+      override def join[A](fa:F[G[F[G[A]]]]):F[G[A]] = F.map(F.flatMap[G[F[G[A]]], G[G[A]]](fa)(gfg => T.sequence(gfg)(F)))(G.join(_))
     }
   }
 
